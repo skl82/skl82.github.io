@@ -140,6 +140,7 @@ export default function MonopolyCashTracker() {
   const [rulesOpen, setRulesOpen] = useState<boolean>(false);
   const [evenBuildEnforced, setEvenBuildEnforced] = useState<boolean>(true);
   const rulesRef = useRef<HTMLDivElement | null>(null);
+  const [hudMenuOpen, setHudMenuOpen] = useState<boolean>(false);
 
   const denominations = [1, 5, 10, 20, 50, 100, 500];
 
@@ -196,6 +197,16 @@ export default function MonopolyCashTracker() {
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(min-width: 768px)");
+    const handle = (e: MediaQueryListEvent) => {
+      if (e.matches) setHudMenuOpen(false);
+    };
+    media.addEventListener("change", handle);
+    return () => media.removeEventListener("change", handle);
   }, []);
 
   // ===== Derived =====
@@ -524,7 +535,7 @@ export default function MonopolyCashTracker() {
   return (
     <div className="min-h-screen w-full bg-slate-50 text-slate-900">
       {/* Compact HUD top-right: status + controls in one line */}
-      <div className="fixed right-3 top-3 z-40 flex items-center gap-3 rounded-lg bg-white/90 px-3 py-2 text-xs shadow-sm ring-1 ring-slate-200">
+      <div className="fixed right-3 top-3 z-40 hidden items-center gap-3 rounded-lg bg-white/90 px-3 py-2 text-xs shadow-sm ring-1 ring-slate-200 md:flex">
         <div className="flex items-center gap-1"><span className="text-slate-500">Players</span><span className="font-semibold">{players.length}</span></div>
         <div className="flex items-center gap-1"><span className="text-slate-500">Cash</span><span className="font-semibold">{fmt(totalCash)}</span></div>
         <div className="flex items-center gap-1"><span className="text-slate-500">Top</span><span className="font-semibold">{topBankroll ? `${topBankroll.name} · ${fmt(topBankroll.cash)}` : "—"}</span></div>
@@ -569,7 +580,93 @@ export default function MonopolyCashTracker() {
         </div>
       </div>
 
-      <div className="px-3 py-6 sm:px-6 lg:px-10">
+      {/* Mobile toggle button */}
+      <div className="fixed right-3 top-3 z-40 md:hidden">
+        <button
+          className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-slate-700 shadow-md ring-1 ring-slate-200"
+          onClick={() => setHudMenuOpen((v) => !v)}
+          aria-label="Open game controls"
+        >
+          <span className="flex flex-col items-center justify-center gap-1">
+            <span className="block h-0.5 w-5 bg-current"></span>
+            <span className="block h-0.5 w-5 bg-current"></span>
+            <span className="block h-0.5 w-5 bg-current"></span>
+          </span>
+        </button>
+      </div>
+
+      {/* Slide-in panel */}
+      <div className={`fixed inset-0 z-50 md:hidden ${hudMenuOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
+        <div
+          className={`absolute inset-0 bg-slate-900/40 transition-opacity duration-300 ${hudMenuOpen ? "opacity-100" : "opacity-0"}`}
+          onClick={() => setHudMenuOpen(false)}
+        />
+        <div
+          className={`absolute left-0 top-0 h-full w-72 transform bg-white text-slate-900 shadow-xl transition-transform duration-300 ${
+            hudMenuOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+            <div className="text-sm font-semibold">Game Controls</div>
+            <button className="rounded-md p-1 text-slate-500 hover:text-slate-800" onClick={() => setHudMenuOpen(false)} aria-label="Close menu">
+              ✕
+            </button>
+          </div>
+          <div className="flex h-[calc(100%-52px)] flex-col overflow-y-auto px-4 py-4 text-sm">
+            <div className="space-y-1">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Stats</div>
+              <div className="flex justify-between"><span>Players</span><span className="font-semibold">{players.length}</span></div>
+              <div className="flex justify-between"><span>Total Cash</span><span className="font-semibold">{fmt(totalCash)}</span></div>
+              <div className="flex justify-between"><span>Top</span><span className="font-semibold">{topBankroll ? topBankroll.name : "—"}</span></div>
+            </div>
+            <div className="mt-4 space-y-2">
+              <label className="text-xs font-semibold uppercase text-slate-500">Starting cash</label>
+              <input
+                type="number"
+                className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-right"
+                value={startingCash}
+                min={0}
+                onChange={(e) => setStartingCash(parseInt(e.target.value || "0", 10))}
+                onBlur={() => pushHistory({ id: crypto.randomUUID(), ts: Date.now(), kind: "set-start", amount: startingCash })}
+              />
+            </div>
+            <div className="mt-4 space-y-2">
+              <button className="w-full rounded-md bg-rose-600 py-2 text-white hover:bg-rose-700" onClick={hardReset}>New Game</button>
+              <div className="flex gap-2">
+                <button
+                  className="flex-1 rounded-md bg-slate-200 py-2 ring-1 ring-slate-300 disabled:opacity-40"
+                  onClick={onUndo}
+                  disabled={history.length === 0}
+                >
+                  Undo
+                </button>
+                <button
+                  className="flex-1 rounded-md bg-slate-200 py-2 ring-1 ring-slate-300 disabled:opacity-40"
+                  onClick={onRedo}
+                  disabled={redoStack.length === 0}
+                >
+                  Redo
+                </button>
+              </div>
+            </div>
+            <div className="mt-4 border-t border-slate-200 pt-4">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Game rules</div>
+              <label className="mt-2 flex items-center justify-between text-sm font-medium">
+                <span>Even-building enforcement</span>
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-emerald-600"
+                  checked={evenBuildEnforced}
+                  onChange={(e) => setEvenBuildEnforced(e.target.checked)}
+                />
+              </label>
+              <p className="mt-1 text-xs text-slate-500">Keeps house builds balanced across color sets.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-3 py-6 sm:px-6 lg:px-10 max-w-none">
         {/* Header */}
         <header className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex items-center gap-3">
@@ -603,9 +700,9 @@ export default function MonopolyCashTracker() {
         </header>
 
         {/* Main: Players + Bank + Rent */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)]">
           {/* Players (order preserved; draggable to reorder) */}
-          <section className="lg:col-span-2 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {players.map((p, idx) => (
               <div
                 key={p.id}
@@ -638,11 +735,11 @@ export default function MonopolyCashTracker() {
             ))}
           </section>
 
-          {/* Bank */}
-          <section className="space-y-4">
+            {/* Bank */}
+            <section className="space-y-4">
             <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <h2 className="mb-3 text-lg font-semibold">Bank — Properties</h2>
-              <div className="grid grid-cols-1 gap-2 max-h-[420px] overflow-auto pr-1">
+              <div className="grid grid-cols-1 gap-3 max-h-[420px] overflow-auto pr-3">
                 {PROPERTIES.map((prop) => (
                   <PropertyChip key={prop.name} prop={prop} COLORS={COLORS} />
                 ))}
@@ -742,26 +839,26 @@ export default function MonopolyCashTracker() {
                 </button>
               </div>
             </div>
+            </section>
+          </div>
+
+          {/* History */}
+          <section className="mt-6 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <h2 className="mb-3 text-lg font-semibold">History</h2>
+            {history.length === 0 ? (
+              <div className="text-sm text-slate-500">No actions yet.</div>
+            ) : (
+              <ul className="divide-y divide-slate-200">
+                {history.map((t) => (
+                  <li key={t.id} className="py-2 text-sm">
+                    <HistoryRow txn={t} players={players} />
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
-        </div>
 
-        {/* History */}
-        <section className="mt-6 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-          <h2 className="mb-3 text-lg font-semibold">History</h2>
-          {history.length === 0 ? (
-            <div className="text-sm text-slate-500">No actions yet.</div>
-          ) : (
-            <ul className="divide-y divide-slate-200">
-              {history.map((t) => (
-                <li key={t.id} className="py-2 text-sm">
-                  <HistoryRow txn={t} players={players} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <footer className="mt-10 text-center text-xs text-slate-500">Mortgages enabled (10% to lift).</footer>
+          <footer className="mt-10 text-center text-xs text-slate-500">Mortgages enabled (10% to lift).</footer>
       </div>
     </div>
   );
