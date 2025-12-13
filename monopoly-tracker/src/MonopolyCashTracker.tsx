@@ -1,4 +1,52 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { JSX } from "react";
+
+type Player = { id: string; name: string; cash: number; properties: string[] };
+type Txn = {
+  id: string;
+  ts: number;
+  kind:
+    | "add"
+    | "subtract"
+    | "transfer"
+    | "set-start"
+    | "reset"
+    | "remove-player"
+    | "add-player"
+    | "acquire"
+    | "build"
+    | "sell"
+    | "mortgage"
+    | "unmortgage";
+  amount?: number;
+  fromId?: string;
+  toId?: string;
+  playerId?: string;
+  propertyName?: string;
+  newLevel?: number;
+  note?: string;
+};
+
+type ColorKey =
+  | "brown"
+  | "light-blue"
+  | "magenta"
+  | "orange"
+  | "red"
+  | "yellow"
+  | "green"
+  | "dark-blue"
+  | "railroad"
+  | "utility";
+
+type Property = {
+  name: string;
+  color: ColorKey;
+  price: number;
+  kind: "color" | "railroad" | "utility";
+  houseCost?: number;
+  rents?: { site: number; set: number; h1: number; h2: number; h3: number; h4: number; hotel: number };
+};
 
 // Monopoly Cash Tracker — single-file React component
 // New in this version:
@@ -8,54 +56,6 @@ import React, { useEffect, useMemo, useState } from "react";
 // - Add Player collapsed into a square + button that expands inline.
 
 export default function MonopolyCashTracker() {
-  // ===== Types =====
-  type Player = { id: string; name: string; cash: number; properties: string[] };
-  type Txn = {
-    id: string;
-    ts: number;
-    kind:
-      | "add"
-      | "subtract"
-      | "transfer"
-      | "set-start"
-      | "reset"
-      | "remove-player"
-      | "add-player"
-      | "acquire"
-      | "build"
-      | "sell"
-      | "mortgage"
-      | "unmortgage";
-    amount?: number; // for add/subtract/transfer/mortgage flows
-    fromId?: string; // playerId or "BANK"
-    toId?: string; // playerId or "BANK"
-    playerId?: string; // for add/subtract/acquire/build/sell/mortgage
-    propertyName?: string; // for acquire/build/sell/mortgage
-    newLevel?: number; // for build/sell: resulting level (0..5)
-    note?: string;
-  };
-
-  type ColorKey =
-    | "brown"
-    | "light-blue"
-    | "magenta"
-    | "orange"
-    | "red"
-    | "yellow"
-    | "green"
-    | "dark-blue"
-    | "railroad"
-    | "utility";
-
-  type Property = {
-    name: string;
-    color: ColorKey;
-    price: number;
-    kind: "color" | "railroad" | "utility";
-    houseCost?: number; // for color properties
-    rents?: { site: number; set: number; h1: number; h2: number; h3: number; h4: number; hotel: number };
-  };
-
   // ===== Property Data (US Standard) =====
   const COLORS: Record<ColorKey, { label: string; hex: string; setSize: number; houseCost?: number }> = {
     brown: { label: "Brown", hex: "#955436", setSize: 2, houseCost: 50 },
@@ -137,6 +137,10 @@ export default function MonopolyCashTracker() {
     diceTotal: "",
   });
 
+  const [rulesOpen, setRulesOpen] = useState<boolean>(false);
+  const [evenBuildEnforced, setEvenBuildEnforced] = useState<boolean>(true);
+  const rulesRef = useRef<HTMLDivElement | null>(null);
+
   const denominations = [1, 5, 10, 20, 50, 100, 500];
 
   // ===== Persistence =====
@@ -154,6 +158,7 @@ export default function MonopolyCashTracker() {
           setCustomChips(parsed.customChips ?? []);
           setLevels(parsed.levels ?? {});
           setMortgages(parsed.mortgages ?? {});
+          setEvenBuildEnforced(parsed.evenBuildEnforced ?? true);
         }
       } else {
         const seed = ["Dog", "Car", "Hat", "Thimble"].map((n) => ({
@@ -176,12 +181,22 @@ export default function MonopolyCashTracker() {
 
   useEffect(() => {
     try {
-      const payload = { players, startingCash, history, customChips, levels, mortgages };
+      const payload = { players, startingCash, history, customChips, levels, mortgages, evenBuildEnforced };
       localStorage.setItem(LS_KEY, JSON.stringify(payload));
     } catch (e) {
       console.error("Save error", e);
     }
-  }, [players, startingCash, history, customChips, levels, mortgages]);
+  }, [players, startingCash, history, customChips, levels, mortgages, evenBuildEnforced]);
+
+  useEffect(() => {
+    const handleClick = (event: MouseEvent) => {
+      if (rulesRef.current && !rulesRef.current.contains(event.target as Node)) {
+        setRulesOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   // ===== Derived =====
   const totalCash = useMemo(() => players.reduce((s, p) => s + p.cash, 0), [players]);
@@ -200,6 +215,22 @@ export default function MonopolyCashTracker() {
     const size = COLORS[color].setSize;
     const count = player.properties.map(getProperty).filter((p) => p && p.color === color).length;
     return count === size;
+  };
+
+  const canBuildEvenly = (player: Player, prop: Property, propertyName: string) => {
+    if (!evenBuildEnforced || prop.kind !== "color") return true;
+    if (!ownsFullSet(player, prop.color)) {
+      alert("Own the full color set to build while even-building enforcement is enabled.");
+      return false;
+    }
+    const colorProps = PROPERTIES.filter((p) => p.kind === "color" && p.color === prop.color);
+    const levelsInSet = colorProps.map((p) => propertyLevel(p.name));
+    const minLevel = levelsInSet.length > 0 ? Math.min(...levelsInSet) : 0;
+    if (propertyLevel(propertyName) > minLevel) {
+      alert("Add houses evenly across the set (difference of one max).");
+      return false;
+    }
+    return true;
   };
 
   const propertyLevel = (name: string) => levels[name] || 0;
@@ -286,6 +317,7 @@ export default function MonopolyCashTracker() {
     const prop = getProperty(propertyName);
     if (!prop || prop.kind !== "color" || !prop.houseCost) return;
     if (isMortgaged(propertyName)) return alert("Unmortgage before building.");
+    if (!canBuildEvenly(owner, prop, propertyName)) return;
     const current = propertyLevel(propertyName);
     if (current >= 5) return; // already hotel
     transfer(playerId, "BANK", prop.houseCost, current === 4 ? `Build HOTEL on ${propertyName}` : `Build house on ${propertyName}`);
@@ -339,6 +371,12 @@ export default function MonopolyCashTracker() {
   };
 
   const buildSetOnce = (playerId: string, color: ColorKey) => {
+    const player = getPlayer(playerId);
+    if (!player) return;
+    if (evenBuildEnforced && !ownsFullSet(player, color)) {
+      alert("Own the full color set before building across it.");
+      return;
+    }
     const props = PROPERTIES.filter((p) => p.kind === "color" && p.color === color).map((p) => p.name);
     for (const name of props) {
       const owner = getOwnerOf(name);
@@ -505,9 +543,33 @@ export default function MonopolyCashTracker() {
         <button className="rounded bg-white px-2 py-1 ring-1 ring-slate-200 disabled:opacity-40" onClick={onRedo} disabled={redoStack.length === 0} title="Redo">
           ↷
         </button>
+        <div className="relative" ref={rulesRef}>
+          <button
+            className="ml-1 flex items-center gap-1 rounded bg-slate-900 px-2 py-1 font-semibold text-white hover:bg-slate-800"
+            onClick={() => setRulesOpen((v) => !v)}
+            title="Adjust in-game rules"
+          >
+            Game Rules
+            <span className="text-[10px]">{rulesOpen ? "▴" : "▾"}</span>
+          </button>
+          {rulesOpen && (
+            <div className="absolute right-0 top-full mt-2 w-64 rounded-lg bg-white p-3 text-[11px] shadow-lg ring-1 ring-slate-200">
+              <label className="flex items-center justify-between text-[12px] font-semibold text-slate-700">
+                <span>Even-building enforcement</span>
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-emerald-600"
+                  checked={evenBuildEnforced}
+                  onChange={(e) => setEvenBuildEnforced(e.target.checked)}
+                />
+              </label>
+              <p className="mt-2 text-[11px] text-slate-500">Keeps house builds balanced across each color set (Monopoly rules). Enabled by default.</p>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="mx-auto max-w-7xl px-4 py-6">
+      <div className="px-3 py-6 sm:px-6 lg:px-10">
         {/* Header */}
         <header className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex items-center gap-3">
@@ -699,7 +761,7 @@ export default function MonopolyCashTracker() {
           )}
         </section>
 
-        <footer className="mt-10 text-center text-xs text-slate-500">Mortgages enabled (10% to lift). Even-building enforcement can be added later.</footer>
+        <footer className="mt-10 text-center text-xs text-slate-500">Mortgages enabled (10% to lift).</footer>
       </div>
     </div>
   );
