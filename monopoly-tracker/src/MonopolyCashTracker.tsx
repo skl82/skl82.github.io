@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { db, type SavedGame } from "./db";
 import type { JSX } from "react";
 
 type Player = { id: string; name: string; cash: number; properties: string[] };
@@ -146,6 +147,12 @@ export default function MonopolyCashTracker() {
   const [isRolling, setIsRolling] = useState(false);
   const rollTicker = useRef<number | null>(null);
   const [centerPot, setCenterPot] = useState(0);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [savedGames, setSavedGames] = useState<SavedGame[]>([]);
+  const [savesOpen, setSavesOpen] = useState(false);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [saveNameInput, setSaveNameInput] = useState("");
+  const [selectedSaveId, setSelectedSaveId] = useState<number | null>(null);
 
   const denominations = [1, 5, 10, 20, 50, 100, 500];
 
@@ -166,6 +173,7 @@ export default function MonopolyCashTracker() {
           setMortgages(parsed.mortgages ?? {});
           setEvenBuildEnforced(parsed.evenBuildEnforced ?? true);
           setCenterPot(parsed.centerPot ?? 0);
+          setTheme(parsed.theme === "dark" ? "dark" : "light");
         }
       } else {
         const seed = ["Dog", "Car", "Hat", "Thimble"].map((n) => ({
@@ -179,6 +187,8 @@ export default function MonopolyCashTracker() {
         setHistory([
           { id: crypto.randomUUID(), ts: Date.now(), kind: "set-start", amount: 1500, note: "Initial game setup" },
         ]);
+        const prefersDark = typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)").matches : false;
+        setTheme(prefersDark ? "dark" : "light");
       }
     } catch (e) {
       console.error("Load error", e);
@@ -188,12 +198,21 @@ export default function MonopolyCashTracker() {
 
   useEffect(() => {
     try {
-      const payload = { players, startingCash, history, customChips, levels, mortgages, evenBuildEnforced, centerPot };
+      const payload = { players, startingCash, history, customChips, levels, mortgages, evenBuildEnforced, centerPot, theme };
       localStorage.setItem(LS_KEY, JSON.stringify(payload));
     } catch (e) {
       console.error("Save error", e);
     }
-  }, [players, startingCash, history, customChips, levels, mortgages, evenBuildEnforced, centerPot]);
+  }, [players, startingCash, history, customChips, levels, mortgages, evenBuildEnforced, centerPot, theme]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "dark") {
+      root.classList.add("dark");
+    } else {
+      root.classList.remove("dark");
+    }
+  }, [theme]);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -213,6 +232,19 @@ export default function MonopolyCashTracker() {
     };
     media.addEventListener("change", handle);
     return () => media.removeEventListener("change", handle);
+  }, []);
+
+  const refreshSavedGames = async () => {
+    try {
+      const saves = await db.saves.orderBy("created").reverse().limit(5).toArray();
+      setSavedGames(saves);
+    } catch (e) {
+      console.error("Load saves failed", e);
+    }
+  };
+
+  useEffect(() => {
+    refreshSavedGames();
   }, []);
 
   useEffect(() => {
@@ -315,6 +347,95 @@ export default function MonopolyCashTracker() {
     if (centerPot <= 0) return;
     adjustCash(playerId, centerPot, "Collected center pot");
     setCenterPot(0);
+  };
+
+  const defaultSaveName = () => {
+    const now = new Date();
+    const hour = now.getHours();
+    const segment = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d} ${segment}`;
+  };
+
+  const buildPayload = () => ({
+    players,
+    startingCash,
+    history,
+    customChips,
+    levels,
+    mortgages,
+    evenBuildEnforced,
+    centerPot,
+    theme,
+  });
+
+  const saveGame = async (name: string) => {
+    const finalName = (name || defaultSaveName()).trim();
+    if (!finalName) return;
+    try {
+      await db.transaction("rw", db.saves, async () => {
+        await db.saves.add({ name: finalName, created: Date.now(), payload: buildPayload() });
+        const all = await db.saves.orderBy("created").reverse().toArray();
+        if (all.length > 5) {
+          const toDelete = all.slice(5);
+          await db.saves.bulkDelete(toDelete.map((s) => s.id!).filter(Boolean));
+        }
+      });
+      await refreshSavedGames();
+      setSaveModalOpen(false);
+      setHudMenuOpen(false);
+      setSavesOpen(false);
+    } catch (e) {
+      console.error("Save failed", e);
+      alert("Could not save game.");
+    }
+  };
+
+  const updateExistingSave = async (id: number | null) => {
+    if (id == null) return;
+    const target = savedGames.find((s) => s.id === id);
+    if (!target) return;
+    try {
+      await db.saves.update(id, { payload: buildPayload(), created: Date.now() });
+      await refreshSavedGames();
+      setSaveModalOpen(false);
+      setHudMenuOpen(false);
+      setSavesOpen(false);
+    } catch (e) {
+      console.error("Update save failed", e);
+      alert("Could not update saved game.");
+    }
+  };
+
+  const openSaveModal = () => {
+    setSaveNameInput(defaultSaveName());
+    setSelectedSaveId(savedGames[0]?.id ?? null);
+    setSaveModalOpen(true);
+  };
+
+  const loadGame = async (save: SavedGame) => {
+    try {
+      const data = save.payload;
+      if (!data) return;
+      setPlayers(data.players ?? []);
+      setStartingCash(data.startingCash ?? 1500);
+      setHistory(data.history ?? []);
+      setRedoStack([]);
+      setCustomChips(data.customChips ?? []);
+      setLevels(data.levels ?? {});
+      setMortgages(data.mortgages ?? {});
+      setEvenBuildEnforced(data.evenBuildEnforced ?? true);
+      setCenterPot(data.centerPot ?? 0);
+      setTheme(data.theme === "dark" ? "dark" : "light");
+    } catch (e) {
+      console.error("Load failed", e);
+      alert("Could not load saved game.");
+    } finally {
+      setSavesOpen(false);
+      setHudMenuOpen(false);
+    }
   };
 
   const transfer = (fromId: string, toId: string, amount: number, note?: string) => {
@@ -559,6 +680,68 @@ export default function MonopolyCashTracker() {
   // ===== Render =====
   return (
     <div className="min-h-screen w-full bg-slate-50 text-slate-900">
+      {saveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl ring-1 ring-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+              <h2 className="text-lg font-semibold">Save Game</h2>
+              <button className="rounded-md px-2 py-1 text-slate-500 hover:text-slate-800" onClick={() => setSaveModalOpen(false)}>✕</button>
+            </div>
+            <div className="mt-3 space-y-3">
+              <div className="rounded-lg border border-slate-200 p-3">
+                <div className="text-xs font-semibold uppercase text-slate-500">Save New Game</div>
+                <label className="mt-2 block text-sm font-medium text-slate-700">Name</label>
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+                  value={saveNameInput}
+                  onChange={(e) => setSaveNameInput(e.target.value)}
+                  placeholder={defaultSaveName()}
+                />
+                <button
+                  className="mt-3 w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white ring-1 ring-blue-600 hover:bg-blue-700"
+                  onClick={() => saveGame(saveNameInput)}
+                >
+                  Save as New
+                </button>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-3">
+                <div className="text-xs font-semibold uppercase text-slate-500">Update Existing Save</div>
+                {savedGames.length === 0 ? (
+                  <div className="mt-2 text-xs text-slate-500">No saved games yet.</div>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {savedGames.map((sg) => (
+                      <label key={sg.id} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="select-save"
+                            checked={selectedSaveId === sg.id}
+                            onChange={() => setSelectedSaveId(sg.id ?? null)}
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-semibold">{sg.name}</span>
+                            <span className="text-[11px] text-slate-500">{new Date(sg.created).toLocaleString()}</span>
+                          </div>
+                        </div>
+                        <span className="text-[11px] text-slate-500">ID {sg.id}</span>
+                      </label>
+                    ))}
+                    <button
+                      className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
+                      onClick={() => updateExistingSave(selectedSaveId)}
+                      disabled={selectedSaveId == null}
+                    >
+                      Update Selected
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Compact HUD top-right: status + controls in one line */}
       <div className="fixed right-3 top-3 z-40 hidden items-center gap-3 rounded-lg bg-white/90 px-3 py-2 text-xs shadow-sm ring-1 ring-slate-200 lg:flex">
         <div className="flex items-center gap-1"><span className="text-slate-500">Players</span><span className="font-semibold">{players.length}</span></div>
@@ -572,6 +755,9 @@ export default function MonopolyCashTracker() {
         </div>
         <button className="rounded bg-rose-600 px-2 py-1 font-semibold text-white hover:bg-rose-700" onClick={hardReset} title="New Game">
           New
+        </button>
+        <button className="rounded bg-blue-600 px-2 py-1 font-semibold text-white ring-1 ring-blue-600 hover:bg-blue-700" onClick={openSaveModal} title="Save current game">
+          Save
         </button>
         <button className="rounded bg-white px-2 py-1 ring-1 ring-slate-200 disabled:opacity-40" onClick={onUndo} disabled={history.length === 0} title="Undo">
           ↶
@@ -600,6 +786,37 @@ export default function MonopolyCashTracker() {
                 />
               </label>
               <p className="mt-2 text-[11px] text-slate-500">Keeps house builds balanced across each color set (Monopoly rules). Enabled by default.</p>
+            </div>
+          )}
+        </div>
+        <div className="relative">
+          <button
+            className="rounded bg-white px-2 py-1 ring-1 ring-slate-200 hover:bg-slate-50"
+            onClick={() => setSavesOpen((v) => !v)}
+            title="Saved games"
+          >
+            Saved
+            <span className="ml-1 text-[10px]">{savesOpen ? "▴" : "▾"}</span>
+          </button>
+          {savesOpen && (
+            <div className="absolute right-0 top-full mt-2 w-52 rounded-lg bg-white p-2 text-sm shadow-lg ring-1 ring-slate-200">
+              {savedGames.length === 0 ? (
+                <div className="px-2 py-1 text-xs text-slate-500">No saved games.</div>
+              ) : (
+                <ul className="divide-y divide-slate-200">
+                  {savedGames.map((sg) => (
+                    <li key={sg.id} className="py-1">
+                      <button
+                        className="flex w-full flex-col items-start rounded px-2 py-1 text-left hover:bg-slate-50"
+                        onClick={() => loadGame(sg)}
+                      >
+                        <span className="font-semibold">{sg.name}</span>
+                        <span className="text-[11px] text-slate-500">{new Date(sg.created).toLocaleString()}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
         </div>
@@ -656,7 +873,6 @@ export default function MonopolyCashTracker() {
               />
             </div>
             <div className="mt-4 space-y-2">
-              <button className="w-full rounded-md bg-rose-600 py-2 text-white hover:bg-rose-700" onClick={hardReset}>New Game</button>
               <div className="flex gap-2">
                 <button
                   className="flex-1 rounded-md bg-slate-200 py-2 ring-1 ring-slate-300 disabled:opacity-40"
@@ -672,6 +888,28 @@ export default function MonopolyCashTracker() {
                 >
                   Redo
                 </button>
+              </div>
+              <button className="w-full rounded-md bg-rose-600 py-2 text-white hover:bg-rose-700" onClick={hardReset}>New Game</button>
+              <button className="w-full rounded-md bg-blue-600 py-2 text-white ring-1 ring-blue-600 hover:bg-blue-700" onClick={() => { openSaveModal(); setHudMenuOpen(false); }}>Save Game</button>
+              <div className="rounded-lg bg-white ring-1 ring-slate-200">
+                <div className="px-3 py-2 text-xs font-semibold uppercase text-slate-500">Saved Games</div>
+                {savedGames.length === 0 ? (
+                  <div className="px-3 pb-3 text-xs text-slate-500">No saved games.</div>
+                ) : (
+                  <ul className="divide-y divide-slate-200">
+                    {savedGames.map((sg) => (
+                      <li key={sg.id}>
+                        <button
+                          className="flex w-full flex-col items-start px-3 py-2 text-left hover:bg-slate-50"
+                          onClick={() => loadGame(sg)}
+                        >
+                          <span className="font-semibold">{sg.name}</span>
+                          <span className="text-[11px] text-slate-500">{new Date(sg.created).toLocaleString()}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
             <div className="mt-4 border-t border-slate-200 pt-4">
