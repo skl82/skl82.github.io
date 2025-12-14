@@ -725,9 +725,9 @@ export default function MonopolyCashTracker() {
         </header>
 
         {/* Main: Players + Bank + Rent */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(260px,360px)]">
+        <div className="space-y-6 lg:flex lg:items-start lg:gap-6 lg:space-y-0">
           {/* Players (order preserved; draggable to reorder) */}
-          <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <section className="grid flex-1 grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
             {players.map((p, idx) => (
               <div
                 key={p.id}
@@ -763,7 +763,7 @@ export default function MonopolyCashTracker() {
           </section>
 
           {/* Quick Dice + Bank */}
-          <section className="space-y-4">
+          <section className="space-y-4 lg:w-[320px]">
             <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <h2 className="mb-3 text-lg font-semibold">Quick Dice Roll</h2>
               <button
