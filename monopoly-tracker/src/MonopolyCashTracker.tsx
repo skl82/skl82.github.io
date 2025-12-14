@@ -535,7 +535,7 @@ export default function MonopolyCashTracker() {
   return (
     <div className="min-h-screen w-full bg-slate-50 text-slate-900">
       {/* Compact HUD top-right: status + controls in one line */}
-      <div className="fixed right-3 top-3 z-40 hidden items-center gap-3 rounded-lg bg-white/90 px-3 py-2 text-xs shadow-sm ring-1 ring-slate-200 md:flex">
+      <div className="fixed right-3 top-3 z-40 hidden items-center gap-3 rounded-lg bg-white/90 px-3 py-2 text-xs shadow-sm ring-1 ring-slate-200 lg:flex">
         <div className="flex items-center gap-1"><span className="text-slate-500">Players</span><span className="font-semibold">{players.length}</span></div>
         <div className="flex items-center gap-1"><span className="text-slate-500">Cash</span><span className="font-semibold">{fmt(totalCash)}</span></div>
         <div className="flex items-center gap-1"><span className="text-slate-500">Top</span><span className="font-semibold">{topBankroll ? `${topBankroll.name} · ${fmt(topBankroll.cash)}` : "—"}</span></div>
@@ -581,7 +581,7 @@ export default function MonopolyCashTracker() {
       </div>
 
       {/* Mobile toggle button */}
-      <div className="fixed right-3 top-3 z-40 md:hidden">
+      <div className="fixed right-3 top-3 z-40 lg:hidden">
         <button
           className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-slate-700 shadow-md ring-1 ring-slate-200"
           onClick={() => setHudMenuOpen((v) => !v)}
@@ -596,14 +596,14 @@ export default function MonopolyCashTracker() {
       </div>
 
       {/* Slide-in panel */}
-      <div className={`fixed inset-0 z-50 md:hidden ${hudMenuOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
+      <div className={`fixed inset-0 z-50 lg:hidden ${hudMenuOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
         <div
           className={`absolute inset-0 bg-slate-900/40 transition-opacity duration-300 ${hudMenuOpen ? "opacity-100" : "opacity-0"}`}
           onClick={() => setHudMenuOpen(false)}
         />
         <div
-          className={`absolute left-0 top-0 h-full w-72 transform bg-white text-slate-900 shadow-xl transition-transform duration-300 ${
-            hudMenuOpen ? "translate-x-0" : "-translate-x-full"
+          className={`absolute right-0 top-0 h-full w-72 transform bg-white text-slate-900 shadow-xl transition-transform duration-300 ${
+            hudMenuOpen ? "translate-x-0" : "translate-x-full"
           }`}
         >
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
