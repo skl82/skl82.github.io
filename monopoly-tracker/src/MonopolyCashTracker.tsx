@@ -141,6 +141,11 @@ export default function MonopolyCashTracker() {
   const [evenBuildEnforced, setEvenBuildEnforced] = useState<boolean>(true);
   const rulesRef = useRef<HTMLDivElement | null>(null);
   const [hudMenuOpen, setHudMenuOpen] = useState<boolean>(false);
+  const [diceTotal, setDiceTotal] = useState<number | null>(null);
+  const [diceValues, setDiceValues] = useState<[number, number]>([1, 1]);
+  const [isRolling, setIsRolling] = useState(false);
+  const rollTicker = useRef<number | null>(null);
+  const [centerPot, setCenterPot] = useState(0);
 
   const denominations = [1, 5, 10, 20, 50, 100, 500];
 
@@ -160,6 +165,7 @@ export default function MonopolyCashTracker() {
           setLevels(parsed.levels ?? {});
           setMortgages(parsed.mortgages ?? {});
           setEvenBuildEnforced(parsed.evenBuildEnforced ?? true);
+          setCenterPot(parsed.centerPot ?? 0);
         }
       } else {
         const seed = ["Dog", "Car", "Hat", "Thimble"].map((n) => ({
@@ -182,12 +188,12 @@ export default function MonopolyCashTracker() {
 
   useEffect(() => {
     try {
-      const payload = { players, startingCash, history, customChips, levels, mortgages, evenBuildEnforced };
+      const payload = { players, startingCash, history, customChips, levels, mortgages, evenBuildEnforced, centerPot };
       localStorage.setItem(LS_KEY, JSON.stringify(payload));
     } catch (e) {
       console.error("Save error", e);
     }
-  }, [players, startingCash, history, customChips, levels, mortgages, evenBuildEnforced]);
+  }, [players, startingCash, history, customChips, levels, mortgages, evenBuildEnforced, centerPot]);
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -207,6 +213,12 @@ export default function MonopolyCashTracker() {
     };
     media.addEventListener("change", handle);
     return () => media.removeEventListener("change", handle);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (rollTicker.current) window.clearInterval(rollTicker.current);
+    };
   }, []);
 
   // ===== Derived =====
@@ -284,12 +296,25 @@ export default function MonopolyCashTracker() {
     setRedoStack([]);
     setLevels({});
     setMortgages({});
+     setCenterPot(0);
     pushHistory({ id: crypto.randomUUID(), ts: Date.now(), kind: "reset", note: "New game" });
   };
 
   const adjustCash = (playerId: string, delta: number, note?: string) => {
     setPlayers((ps) => ps.map((p) => (p.id === playerId ? { ...p, cash: Math.max(0, p.cash + delta) } : p)));
     pushHistory({ id: crypto.randomUUID(), ts: Date.now(), kind: delta >= 0 ? "add" : "subtract", playerId, amount: Math.abs(delta), note });
+  };
+
+  const contributeToCenter = (playerId: string, amount: number, note?: string) => {
+    if (amount <= 0) return;
+    adjustCash(playerId, -amount, note ?? "Paid to center");
+    setCenterPot((pot) => pot + amount);
+  };
+
+  const claimCenterPot = (playerId: string) => {
+    if (centerPot <= 0) return;
+    adjustCash(playerId, centerPot, "Collected center pot");
+    setCenterPot(0);
   };
 
   const transfer = (fromId: string, toId: string, amount: number, note?: string) => {
@@ -541,7 +566,7 @@ export default function MonopolyCashTracker() {
         <div className="flex items-center gap-1"><span className="text-slate-500">Top</span><span className="font-semibold">{topBankroll ? `${topBankroll.name} · ${fmt(topBankroll.cash)}` : "—"}</span></div>
         <div className="ml-2 flex items-center gap-1">
           <span className="text-slate-500">Start</span>
-          <input type="number" className="w-18 rounded border border-slate-300 bg-white px-1 py-0.5 text-right" value={startingCash} min={0}
+          <input type="number" className="w-16 rounded border border-slate-300 bg-white px-1 py-0.5 text-right" value={startingCash} min={0}
             onChange={(e) => setStartingCash(parseInt(e.target.value || "0", 10))}
             onBlur={() => pushHistory({ id: crypto.randomUUID(), ts: Date.now(), kind: "set-start", amount: startingCash })} />
         </div>
@@ -716,7 +741,9 @@ export default function MonopolyCashTracker() {
                   selected={selectedId === p.id}
                   onSelect={() => setSelectedId(p.id)}
                   onRemove={() => removePlayer(p.id)}
-                  onAdjust={(delta, note) => adjustCash(p.id, delta, note)}
+                onAdjust={(delta, note) => adjustCash(p.id, delta, note)}
+                onPayCenter={(amount, note) => contributeToCenter(p.id, amount, note)}
+                onClaimCenter={() => claimCenterPot(p.id)}
                   onPassGo={() => adjustCash(p.id, +200, "Pass GO")}
                   onPurchase={(propName, price) => acquireProperty(p.id, propName, price)}
                   onBuild={(propName) => buildOn(p.id, propName)}
@@ -735,8 +762,63 @@ export default function MonopolyCashTracker() {
             ))}
           </section>
 
-            {/* Bank */}
-            <section className="space-y-4">
+          {/* Quick Dice + Bank */}
+          <section className="space-y-4">
+            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+              <h2 className="mb-3 text-lg font-semibold">Quick Dice Roll</h2>
+              <button
+                className={`mx-auto flex h-20 w-48 items-center justify-center gap-6 rounded-xl bg-slate-100 transition hover:bg-slate-200 ${isRolling ? "animate-pulse" : ""}`}
+                onClick={() => {
+                  if (isRolling) return;
+                  setIsRolling(true);
+                  setDiceTotal(null);
+                  let ticks = 0;
+                  const maxTicks = 8 + Math.floor(Math.random() * 10); // vary between 8 and 17 spins
+                  const roll = () => Math.floor(Math.random() * 6) + 1;
+                  if (rollTicker.current) window.clearInterval(rollTicker.current);
+                  rollTicker.current = window.setInterval(() => {
+                    const spun: [number, number] = [roll(), roll()];
+                    setDiceValues(spun);
+                    ticks += 1;
+                    if (ticks >= maxTicks) {
+                      if (rollTicker.current) window.clearInterval(rollTicker.current);
+                      setDiceTotal(spun[0] + spun[1]);
+                      setIsRolling(false);
+                    }
+                  }, 80);
+                }}
+              >
+                {diceValues.map((value, idx) => (
+                  <span key={idx} className="grid h-14 w-14 place-content-center rounded-lg bg-white text-2xl font-bold shadow-inner">
+                    {value}
+                  </span>
+                ))}
+              </button>
+              <div className="mt-3 text-center text-sm text-slate-500">
+                {diceTotal === null ? "Tap the dice to roll." : `Total: ${diceTotal}`}
+              </div>
+            </div>
+            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+              <h2 className="mb-2 text-lg font-semibold">Center Pot</h2>
+              <p className="text-xs text-slate-500">When deducting with “Pay to center”, funds collect here. Drag this chip to a player to pay it out.</p>
+              <div
+                draggable={centerPot > 0}
+                onDragStart={(e) => {
+                  if (centerPot <= 0) {
+                    e.preventDefault();
+                    return;
+                  }
+                  e.dataTransfer.setData("text/plain", JSON.stringify({ type: "center" }));
+                }}
+                className={`mt-3 flex cursor-grab select-none items-center justify-between rounded-lg bg-slate-100 px-3 py-3 text-sm font-semibold ring-1 ring-slate-200 ${
+                  centerPot <= 0 ? "opacity-60" : "hover:bg-slate-200"
+                }`}
+                title={centerPot > 0 ? "Drag to a player to award the pot" : "Pot is empty"}
+              >
+                <span className="text-xs uppercase text-slate-500">In pot</span>
+                <span className="text-lg text-slate-800">${centerPot.toLocaleString()}</span>
+              </div>
+            </div>
             <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <h2 className="mb-3 text-lg font-semibold">Bank — Properties</h2>
               <div className="grid grid-cols-1 gap-3 max-h-[420px] overflow-auto pr-3">
@@ -919,6 +1001,8 @@ function PlayerCard({
   onSelect,
   onRemove,
   onAdjust,
+  onPayCenter,
+  onClaimCenter,
   onPassGo,
   onPurchase,
   onBuild,
@@ -938,6 +1022,8 @@ function PlayerCard({
   onSelect: () => void;
   onRemove: () => void;
   onAdjust: (delta: number, note?: string) => void;
+  onPayCenter: (amount: number, note?: string) => void;
+  onClaimCenter: () => void;
   onPassGo: () => void;
   onPurchase: (propName: string, price: number) => void;
   onBuild: (propName: string) => void;
@@ -954,11 +1040,17 @@ function PlayerCard({
 }) {
   const [custom, setCustom] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [payCenterToggle, setPayCenterToggle] = useState(false);
 
   // collect colors this player owns at least one property in
   const ownedColors = Array.from(new Set(
     player.properties.map(getProperty).filter(Boolean).map((p: any) => p.color).filter((c: ColorKey) => c !== "railroad" && c !== "utility")
   )) as ColorKey[];
+
+  const performAdjust = (delta: number, note?: string) => {
+    if (payCenterToggle && delta < 0) onPayCenter(-delta, note);
+    else onAdjust(delta, note);
+  };
 
   return (
     <div
@@ -980,10 +1072,11 @@ function PlayerCard({
         try {
           const parsed = JSON.parse(data);
           if (parsed.type === "property") onPurchase(parsed.name, parsed.price);
-          else if (parsed.type === "custom") onAdjust(-parsed.price, `Custom -$${parsed.price}`);
+          else if (parsed.type === "custom") performAdjust(-parsed.price, `Custom -$${parsed.price}`);
+          else if (parsed.type === "center") onClaimCenter();
         } catch {
           const price = parseInt(data || "0", 10);
-          if (price > 0) onAdjust(-price, `-${price}`);
+          if (price > 0) performAdjust(-price, `-${price}`);
         }
       }}
     >
@@ -1101,7 +1194,7 @@ function PlayerCard({
               className="rounded-md bg-slate-100 px-2 py-1 text-sm ring-1 ring-slate-200 hover:bg-slate-200"
               onClick={(e) => {
                 e.stopPropagation();
-                onAdjust(d, `+${d}`);
+                performAdjust(d, `+${d}`);
               }}
               title={`Add ${d}`}
             >
@@ -1111,7 +1204,7 @@ function PlayerCard({
               className="rounded-md bg-slate-100 px-2 py-1 text-sm ring-1 ring-slate-200 hover:bg-slate-200"
               onClick={(e) => {
                 e.stopPropagation();
-                onAdjust(-d, `-${d}`);
+                performAdjust(-d, `-${d}`);
               }}
               title={`Subtract ${d}`}
             >
@@ -1135,7 +1228,7 @@ function PlayerCard({
               if (e.key === "Enter") {
                 const v = parseInt(custom || "0", 10);
                 if (v > 0) {
-                  onAdjust(v, `+${v}`);
+                  performAdjust(v, `+${v}`);
                   setCustom("");
                 }
               }
@@ -1145,32 +1238,36 @@ function PlayerCard({
         <div className="flex gap-2">
           <button
             className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-            onClick={(e) => {
-              e.stopPropagation();
-              const v = parseInt(custom || "0", 10);
-              if (v > 0) {
-                onAdjust(v, `+${v}`);
-                setCustom("");
-              }
-            }}
-          >
+          onClick={(e) => {
+            e.stopPropagation();
+            const v = parseInt(custom || "0", 10);
+            if (v > 0) {
+              performAdjust(v, `+${v}`);
+              setCustom("");
+            }
+          }}
+        >
             + Add
           </button>
           <button
             className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700"
-            onClick={(e) => {
-              e.stopPropagation();
-              const v = parseInt(custom || "0", 10);
-              if (v > 0) {
-                onAdjust(-v, `-${v}`);
-                setCustom("");
-              }
-            }}
+          onClick={(e) => {
+            e.stopPropagation();
+            const v = parseInt(custom || "0", 10);
+            if (v > 0) {
+              performAdjust(-v, `-${v}`);
+              setCustom("");
+            }
+          }}
           >
             − Subtract
           </button>
         </div>
       </div>
+      <label className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+        <input type="checkbox" checked={payCenterToggle} onChange={(e) => setPayCenterToggle(e.target.checked)} />
+        Pay to center when subtracting
+      </label>
 
       <div className="mt-2 text-xs text-slate-500">Tip: drag to reorder players. Drop bank property chip here to buy. Use + / − to build or sell. $ to mortgage, $$ to unmortgage.</div>
     </div>
