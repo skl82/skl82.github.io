@@ -724,6 +724,24 @@ export default function MonopolyCashTracker() {
           </div>
         </header>
 
+        {/* Horizontal Bank strip (wide screens) */}
+        <section className="mb-4 hidden lg:block">
+          <div className="flex items-center gap-3 rounded-xl bg-white px-3 py-2 shadow-sm ring-1 ring-slate-200">
+            <div className="whitespace-nowrap text-sm font-semibold">Bank — Properties</div>
+            <div className="relative w-full overflow-hidden">
+              <div className="no-scrollbar no-overscroll flex items-center gap-3 overflow-x-auto py-1 pl-1 pr-4">
+                {PROPERTIES.map((prop) => (
+                  <div key={prop.name} className="shrink-0">
+                    <PropertyChip prop={prop} COLORS={COLORS} />
+                  </div>
+                ))}
+              </div>
+              <div className="pointer-events-none absolute left-0 top-0 h-full w-1.5 bg-gradient-to-r from-white to-transparent" />
+              <div className="pointer-events-none absolute right-0 top-0 h-full w-2 bg-gradient-to-l from-white to-transparent" />
+            </div>
+          </div>
+        </section>
+
         {/* Main: Players + Bank + Rent */}
         <div className="space-y-6 lg:flex lg:items-start lg:gap-6 lg:space-y-0">
           {/* Players (order preserved; draggable to reorder) */}
@@ -819,7 +837,7 @@ export default function MonopolyCashTracker() {
                 <span className="text-lg text-slate-800">${centerPot.toLocaleString()}</span>
               </div>
             </div>
-            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200 lg:hidden">
               <h2 className="mb-3 text-lg font-semibold">Bank — Properties</h2>
               <div className="grid grid-cols-1 gap-3 max-h-[420px] overflow-auto pr-3">
                 {PROPERTIES.map((prop) => (
@@ -954,7 +972,7 @@ function PropertyChip({ prop, COLORS }: { prop: any; COLORS: any }) {
     <div
       draggable
       onDragStart={(e) => e.dataTransfer.setData("text/plain", payload)}
-      className="cursor-grab select-none rounded-md bg-white px-3 py-2 text-sm ring-1 ring-slate-200 active:cursor-grabbing flex items-center justify-between gap-3"
+      className="cursor-grab select-none rounded-md bg-white px-2.5 py-1.5 text-sm ring-1 ring-slate-200 active:cursor-grabbing flex items-center justify-between gap-2.5"
       style={{ boxShadow: `inset 0 0 0 2px ${color.hex}30, 0 0 10px 1px ${color.hex}40` }}
       title={`Drag ${prop.name} ($${prop.price})`}
     >
