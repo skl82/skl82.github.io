@@ -982,7 +982,15 @@ export default function MonopolyCashTracker() {
                   Redo
                 </button>
               </div>
-              <button className="w-full rounded-md bg-rose-600 py-2 text-white hover:bg-rose-700" onClick={hardReset}>New Game</button>
+              <button
+                className="w-full rounded-md bg-rose-600 py-2 text-white hover:bg-rose-700"
+                onClick={() => {
+                  hardReset();
+                  setHudMenuOpen(false);
+                }}
+              >
+                New Game
+              </button>
               <button className="w-full rounded-md bg-blue-600 py-2 text-white ring-1 ring-blue-600 hover:bg-blue-700" onClick={() => { openSaveModal(); setHudMenuOpen(false); }}>Save Game</button>
               <div className="rounded-lg bg-white ring-1 ring-slate-200">
                 <div className="px-3 py-2 text-xs font-semibold uppercase text-slate-500">Saved Games</div>
@@ -1269,13 +1277,16 @@ export default function MonopolyCashTracker() {
               <div className="grid grid-cols-1 gap-2">
                 <div>
                   <label className="block text-sm font-medium text-slate-700">Player landed</label>
-                  <input list="player-names" className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2" value={rentForm.playerId}
-                    onChange={(e) => setRentForm({ ...rentForm, playerId: (e.target as HTMLInputElement).value })} placeholder="Start typing player name" />
-                  <datalist id="player-names">
+                  <select
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                    value={rentForm.playerId}
+                    onChange={(e) => setRentForm({ ...rentForm, playerId: e.target.value })}
+                  >
+                    <option value="">Select player</option>
                     {players.map((p) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
-                  </datalist>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700">Landed on property</label>
