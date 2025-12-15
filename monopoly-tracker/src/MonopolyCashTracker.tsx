@@ -137,6 +137,21 @@ export default function MonopolyCashTracker() {
     property: "",
     diceTotal: "",
   });
+  const [tradeForm, setTradeForm] = useState<{
+    fromId: string;
+    toId: string;
+    props: string[];
+    cash: string;
+    exchangeProps: string[];
+    exchangeCash: string;
+  }>({
+    fromId: "",
+    toId: "",
+    props: [],
+    cash: "0",
+    exchangeProps: [],
+    exchangeCash: "0",
+  });
 
   const [rulesOpen, setRulesOpen] = useState<boolean>(false);
   const [evenBuildEnforced, setEvenBuildEnforced] = useState<boolean>(true);
@@ -683,6 +698,69 @@ export default function MonopolyCashTracker() {
     return map;
   }, [players]);
 
+  const onTrade = () => {
+    const from = getPlayer(tradeForm.fromId);
+    const to = getPlayer(tradeForm.toId);
+    if (!from || !to || from.id === to.id) {
+      alert("Pick two different players to trade.");
+      return;
+    }
+    const chosenProps = tradeForm.props.filter((name) => from.properties.includes(name));
+    const blocked = chosenProps.filter((name) => propertyLevel(name) > 0);
+    if (blocked.length > 0) {
+      alert(`Cannot trade properties with houses/hotels: ${blocked.join(", ")}`);
+      return;
+    }
+
+    const exchangeProps = tradeForm.exchangeProps.filter((name) => to.properties.includes(name));
+    const exchangeBlocked = exchangeProps.filter((name) => propertyLevel(name) > 0);
+    if (exchangeBlocked.length > 0) {
+      alert(`Cannot trade properties with houses/hotels: ${exchangeBlocked.join(", ")}`);
+      return;
+    }
+    const cashVal = Math.max(0, parseInt(tradeForm.cash || "0", 10));
+    const exchangeCashVal = Math.max(0, parseInt(tradeForm.exchangeCash || "0", 10));
+
+    // Move properties
+    setPlayers((ps) =>
+      ps.map((p) => {
+        if (p.id === from.id) {
+          const kept = p.properties.filter((name) => !chosenProps.includes(name));
+          const added = exchangeProps.filter((name) => !kept.includes(name));
+          return { ...p, properties: [...kept, ...added] };
+        }
+        if (p.id === to.id) {
+          const kept = p.properties.filter((name) => !exchangeProps.includes(name));
+          const added = chosenProps.filter((name) => !kept.includes(name));
+          return { ...p, properties: [...kept, ...added] };
+        }
+        return p;
+      })
+    );
+
+    if (cashVal > 0) transfer(to.id, from.id, cashVal, chosenProps.length ? `Trade for ${chosenProps.length} properties` : "Trade");
+    if (exchangeCashVal > 0) transfer(from.id, to.id, exchangeCashVal, exchangeProps.length ? `Exchange for ${exchangeProps.length} properties` : "Trade exchange");
+
+    pushHistory({
+      id: crypto.randomUUID(),
+      ts: Date.now(),
+      kind: "transfer",
+      fromId: from.id,
+      toId: to.id,
+      amount: 0,
+      note: `Trade: ${chosenProps.length ? chosenProps.join(", ") : "no properties"} ⇄ ${exchangeProps.length ? exchangeProps.join(", ") : "no properties"}`,
+    });
+
+    setTradeForm({
+      fromId: "",
+      toId: "",
+      props: [],
+      cash: "0",
+      exchangeProps: [],
+      exchangeCash: "0",
+    });
+  };
+
   // ===== Render =====
   return (
     <div className="min-h-screen w-full bg-slate-50 text-slate-900">
@@ -1187,6 +1265,163 @@ export default function MonopolyCashTracker() {
                 <button className="rounded-lg bg-white px-4 py-2 text-sm font-medium ring-1 ring-slate-200 hover:bg-slate-50" onClick={() => setRentForm({ playerId: "", property: "", diceTotal: "" })}>
                   Clear
                 </button>
+              </div>
+            </div>
+
+            {/* Trade Panel */}
+            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:w-full sm:gap-4">
+                <h2 className="text-lg font-semibold">Trade</h2>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:w-full sm:gap-4">
+                  <div className="flex flex-col sm:w-40">
+                    <label className="text-xs font-semibold uppercase text-slate-500">From</label>
+                    <select
+                      className="mt-1 truncate rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                      value={tradeForm.fromId}
+                      onChange={(e) => setTradeForm((f) => ({ ...f, fromId: e.target.value, props: [] }))}
+                    >
+                      <option value="">Select player</option>
+                      {players.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col sm:w-40">
+                    <label className="text-xs font-semibold uppercase text-slate-500">To</label>
+                    <select
+                      className="mt-1 truncate rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                      value={tradeForm.toId}
+                      onChange={(e) => setTradeForm((f) => ({ ...f, toId: e.target.value }))}
+                    >
+                      <option value="">Select player</option>
+                      {players.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Properties to trade</label>
+                  {tradeForm.fromId ? (
+                    <div className="mt-2 max-h-48 overflow-auto rounded-md border border-slate-200 p-3">
+                      {getPlayer(tradeForm.fromId)?.properties.length ? (
+                        getPlayer(tradeForm.fromId)!.properties.map((name) => {
+                          const prop = getProperty(name);
+                          if (!prop) return null;
+                          const hasBuildings = propertyLevel(name) > 0;
+                          return (
+                            <label key={name} className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-slate-50">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  disabled={hasBuildings}
+                                  checked={tradeForm.props.includes(name)}
+                                  onChange={() => {
+                                    if (hasBuildings) {
+                                      alert(`${name} cannot be traded while it has houses/hotels.`);
+                                      return;
+                                    }
+                                    setTradeForm((f) => {
+                                      const next = f.props.includes(name) ? f.props.filter((n) => n !== name) : [...f.props, name];
+                                      return { ...f, props: next };
+                                    });
+                                  }}
+                                />
+                                <span className="text-sm font-semibold">{name}</span>
+                              </div>
+                              {hasBuildings && <span className="text-[11px] text-rose-600">Remove houses first</span>}
+                            </label>
+                          );
+                        })
+                      ) : (
+                        <div className="text-sm text-slate-500">No properties to trade.</div>
+                      )}
+                  </div>
+                ) : (
+                  <div className="mt-2 text-sm text-slate-500">Pick a player to see their properties.</div>
+                )}
+              </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Cash to recipient (optional)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2"
+                    value={tradeForm.cash}
+                    onChange={(e) => setTradeForm((f) => ({ ...f, cash: e.target.value }))}
+                  />
+                </div>
+
+                {/* Exchange section */}
+                <div className="mt-2 rounded-md border border-slate-200 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-sm font-semibold text-slate-700">In Exchange For</div>
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500">From {getPlayer(tradeForm.toId)?.name || "recipient"}</div>
+                  </div>
+                  <div className="mb-3">
+                    <label className="block text-sm font-medium text-slate-700">Properties</label>
+                    {tradeForm.toId ? (
+                      <div className="mt-2 max-h-40 overflow-auto rounded-md border border-slate-200 p-3">
+                        {getPlayer(tradeForm.toId)?.properties.length ? (
+                          getPlayer(tradeForm.toId)!.properties.map((name) => {
+                            const prop = getProperty(name);
+                            if (!prop) return null;
+                            const hasBuildings = propertyLevel(name) > 0;
+                            return (
+                              <label key={name} className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-slate-50">
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    disabled={hasBuildings}
+                                    checked={tradeForm.exchangeProps.includes(name)}
+                                    onChange={() => {
+                                      if (hasBuildings) {
+                                        alert(`${name} cannot be traded while it has houses/hotels.`);
+                                        return;
+                                      }
+                                      setTradeForm((f) => {
+                                        const next = f.exchangeProps.includes(name)
+                                          ? f.exchangeProps.filter((n) => n !== name)
+                                          : [...f.exchangeProps, name];
+                                        return { ...f, exchangeProps: next };
+                                      });
+                                    }}
+                                  />
+                                  <span className="text-sm font-semibold">{name}</span>
+                                </div>
+                                {hasBuildings && <span className="text-[11px] text-rose-600">Remove houses first</span>}
+                              </label>
+                            );
+                          })
+                        ) : (
+                          <div className="text-sm text-slate-500">No properties to trade.</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-sm text-slate-500">Pick a recipient to see their properties.</div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">Cash (optional)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2"
+                      value={tradeForm.exchangeCash}
+                      onChange={(e) => setTradeForm((f) => ({ ...f, exchangeCash: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <button
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                  onClick={onTrade}
+                  disabled={!tradeForm.fromId || !tradeForm.toId || tradeForm.fromId === tradeForm.toId}
+                >
+                  Execute Trade
+                </button>
+                <p className="text-xs text-slate-500">Properties with houses/hotels must be cleared before trading.</p>
               </div>
             </div>
             </section>
