@@ -13,19 +13,31 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+env:
+  APP_DIR: monopoly-tracker
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install
-      - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
+
+      - name: Install
+        working-directory: ${{ env.APP_DIR }}
+        run: npm install
+
+      - name: Build
+        working-directory: ${{ env.APP_DIR }}
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: ${{ env.APP_DIR }}/dist
 
   deploy:
     runs-on: ubuntu-latest
