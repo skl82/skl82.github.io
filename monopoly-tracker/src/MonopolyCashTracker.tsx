@@ -176,17 +176,9 @@ export default function MonopolyCashTracker() {
           setTheme(parsed.theme === "dark" ? "dark" : "light");
         }
       } else {
-        const seed = ["Dog", "Car", "Hat", "Thimble"].map((n) => ({
-          id: crypto.randomUUID(),
-          name: n,
-          cash: 1500,
-          properties: [],
-        }));
-        setPlayers(seed);
+        setPlayers([]);
         setStartingCash(1500);
-        setHistory([
-          { id: crypto.randomUUID(), ts: Date.now(), kind: "set-start", amount: 1500, note: "Initial game setup" },
-        ]);
+        setHistory([]);
         const prefersDark = typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)").matches : false;
         setTheme(prefersDark ? "dark" : "light");
       }
@@ -998,38 +990,44 @@ export default function MonopolyCashTracker() {
         <div className="space-y-6 lg:flex lg:items-start lg:gap-6 lg:space-y-0">
           {/* Players (order preserved; draggable to reorder) */}
           <section className="grid flex-1 grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
-            {players.map((p, idx) => (
-              <div
-                key={p.id}
-                draggable
-                onDragStart={() => handleDragStart(idx)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => handleDropOn(idx)}
-              >
-                <PlayerCard
-                  player={p}
-                  selected={selectedId === p.id}
-                  onSelect={() => setSelectedId(p.id)}
-                  onRemove={() => removePlayer(p.id)}
-                onAdjust={(delta, note) => adjustCash(p.id, delta, note)}
-                onPayCenter={(amount, note) => contributeToCenter(p.id, amount, note)}
-                onClaimCenter={() => claimCenterPot(p.id)}
-                  onPassGo={() => adjustCash(p.id, +200, "Pass GO")}
-                  onPurchase={(propName, price) => acquireProperty(p.id, propName, price)}
-                  onBuild={(propName) => buildOn(p.id, propName)}
-                  onSell={(propName) => sellFrom(p.id, propName)}
-                  onBuildSet={(color) => buildSetOnce(p.id, color)}
-                  onMortgage={(name) => doMortgage(p.id, name)}
-                  onUnmortgage={(name) => doUnmortgage(p.id, name)}
-                  denominations={denominations}
-                  ownsFullSet={ownsFullSet}
-                  getProperty={getProperty}
-                  getLevel={propertyLevel}
-                  isMortgaged={isMortgaged}
-                  COLORS={COLORS}
-                />
+            {players.length === 0 ? (
+              <div className="col-span-1 rounded-xl bg-white p-6 text-center text-sm text-slate-500 ring-1 ring-slate-200 md:col-span-2">
+                Add players to start a game!
               </div>
-            ))}
+            ) : (
+              players.map((p, idx) => (
+                <div
+                  key={p.id}
+                  draggable
+                  onDragStart={() => handleDragStart(idx)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleDropOn(idx)}
+                >
+                  <PlayerCard
+                    player={p}
+                    selected={selectedId === p.id}
+                    onSelect={() => setSelectedId(p.id)}
+                    onRemove={() => removePlayer(p.id)}
+                    onAdjust={(delta, note) => adjustCash(p.id, delta, note)}
+                    onPayCenter={(amount, note) => contributeToCenter(p.id, amount, note)}
+                    onClaimCenter={() => claimCenterPot(p.id)}
+                    onPassGo={() => adjustCash(p.id, +200, "Pass GO")}
+                    onPurchase={(propName, price) => acquireProperty(p.id, propName, price)}
+                    onBuild={(propName) => buildOn(p.id, propName)}
+                    onSell={(propName) => sellFrom(p.id, propName)}
+                    onBuildSet={(color) => buildSetOnce(p.id, color)}
+                    onMortgage={(name) => doMortgage(p.id, name)}
+                    onUnmortgage={(name) => doUnmortgage(p.id, name)}
+                    denominations={denominations}
+                    ownsFullSet={ownsFullSet}
+                    getProperty={getProperty}
+                    getLevel={propertyLevel}
+                    isMortgaged={isMortgaged}
+                    COLORS={COLORS}
+                  />
+                </div>
+              ))
+            )}
           </section>
 
           {/* Quick Dice + Bank */}
