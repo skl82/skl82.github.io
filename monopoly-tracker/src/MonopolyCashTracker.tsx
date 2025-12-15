@@ -153,6 +153,7 @@ export default function MonopolyCashTracker() {
     exchangeCash: "0",
   });
   const [tradeOpen, setTradeOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [rulesOpen, setRulesOpen] = useState<boolean>(false);
   const [evenBuildEnforced, setEvenBuildEnforced] = useState<boolean>(true);
@@ -874,9 +875,16 @@ export default function MonopolyCashTracker() {
             </div>
           )}
         </div>
+        <button
+          className="rounded bg-purple-800 px-2 py-1 font-semibold text-white hover:bg-purple-700"
+          onClick={() => setHistoryOpen(true)}
+          title="View history"
+        >
+          History
+        </button>
         <div className="relative">
           <button
-            className="rounded bg-white px-2 py-1 ring-1 ring-slate-200 hover:bg-slate-50"
+            className="rounded bg-yellow-400 px-2 py-1 font-semibold text-slate-900 ring-1 ring-yellow-300 hover:bg-yellow-300"
             onClick={() => setSavesOpen((v) => !v)}
             title="Saved games"
           >
@@ -1010,6 +1018,39 @@ export default function MonopolyCashTracker() {
               </label>
               <p className="mt-1 text-xs text-slate-500">Keeps house builds balanced across color sets.</p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* History slide-out */}
+      <div className={`fixed inset-0 z-40 ${historyOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
+        <div
+          className={`absolute inset-0 bg-slate-900/30 transition-opacity duration-300 ${historyOpen ? "opacity-100" : "opacity-0"}`}
+          onClick={() => setHistoryOpen(false)}
+        />
+        <div
+          className={`absolute right-0 top-0 h-full w-96 max-w-[90vw] transform bg-white text-slate-900 shadow-2xl transition-transform duration-300 ${
+            historyOpen ? "translate-x-0" : "translate-x-full"
+          }`}
+        >
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+            <div className="text-sm font-semibold">History</div>
+            <button className="rounded-md p-1 text-slate-500 hover:text-slate-800" onClick={() => setHistoryOpen(false)} aria-label="Close history">
+              ✕
+            </button>
+          </div>
+          <div className="h-[calc(100%-52px)] overflow-y-auto px-4 py-3">
+            {history.length === 0 ? (
+              <div className="text-sm text-slate-500">No actions yet.</div>
+            ) : (
+              <ul className="divide-y divide-slate-200 text-sm">
+                {history.map((t) => (
+                  <li key={t.id} className="py-2">
+                    <HistoryRow txn={t} players={players} />
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       </div>
@@ -1440,21 +1481,8 @@ export default function MonopolyCashTracker() {
             </section>
           </div>
 
-          {/* History */}
-          <section className="mt-6 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-            <h2 className="mb-3 text-lg font-semibold">History</h2>
-            {history.length === 0 ? (
-              <div className="text-sm text-slate-500">No actions yet.</div>
-            ) : (
-              <ul className="divide-y divide-slate-200">
-                {history.map((t) => (
-                  <li key={t.id} className="py-2 text-sm">
-                    <HistoryRow txn={t} players={players} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          {/* History moved to slide-out */}
+          <section className="hidden"></section>
 
           <footer className="mt-10 text-center text-xs text-slate-500">Mortgages enabled (10% to lift).</footer>
       </div>
