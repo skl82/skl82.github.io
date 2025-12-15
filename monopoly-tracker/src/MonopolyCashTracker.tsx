@@ -1216,44 +1216,46 @@ export default function MonopolyCashTracker() {
               </div>
             </div>
 
-            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-              <h2 className="mb-2 text-lg font-semibold">Custom Price Chip</h2>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  placeholder="Amount"
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2"
-                  value={newCustom}
-                  onChange={(e) => setNewCustom(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+            {false && (
+              <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                <h2 className="mb-2 text-lg font-semibold">Custom Price Chip</h2>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    placeholder="Amount"
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2"
+                    value={newCustom}
+                    onChange={(e) => setNewCustom(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const v = parseInt(newCustom || "0", 10);
+                        if (v > 0) {
+                          setCustomChips((b) => Array.from(new Set([...b, v])).sort((a, z) => a - z));
+                          setNewCustom("");
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                    onClick={() => {
                       const v = parseInt(newCustom || "0", 10);
                       if (v > 0) {
                         setCustomChips((b) => Array.from(new Set([...b, v])).sort((a, z) => a - z));
                         setNewCustom("");
                       }
-                    }
-                  }}
-                />
-                <button
-                  className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                  onClick={() => {
-                    const v = parseInt(newCustom || "0", 10);
-                    if (v > 0) {
-                      setCustomChips((b) => Array.from(new Set([...b, v])).sort((a, z) => a - z));
-                      setNewCustom("");
-                    }
-                  }}
-                >
-                  + Add
-                </button>
+                    }}
+                  >
+                    + Add
+                  </button>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2">
+                  {customChips.map((price) => (
+                    <CustomChip key={price} price={price} />
+                  ))}
+                </div>
               </div>
-              <div className="mt-3 grid grid-cols-1 gap-2">
-                {customChips.map((price) => (
-                  <CustomChip key={price} price={price} />
-                ))}
-              </div>
-            </div>
+            )}
 
             {/* Paying Rent */}
             <div className="relative rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
