@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import { db, type SavedGame } from "./db";
 import type { JSX } from "react";
 
@@ -455,8 +455,12 @@ export default function MonopolyCashTracker() {
 
   const acquireProperty = (playerId: string, propertyName: string, price: number) => {
     const owner = getOwnerOf(propertyName);
-    if (owner && owner.id !== playerId) {
-      alert(`${propertyName} is already owned by ${owner.name}.`);
+    if (owner) {
+      if (owner.id === playerId) {
+        alert(`${propertyName} is already in your portfolio.`);
+      } else {
+        alert(`${propertyName} is already owned by ${owner.name}.`);
+      }
       return;
     }
     transfer(playerId, "BANK", price, `Purchased ${propertyName}`);
@@ -676,6 +680,16 @@ export default function MonopolyCashTracker() {
 
   // ===== UI Helpers =====
   const fmt = (n: number) => `$${n.toLocaleString()}`;
+
+  const propertyOwners = useMemo(() => {
+    const map: Record<string, Player | undefined> = {};
+    players.forEach((player) => {
+      player.properties.forEach((propName) => {
+        map[propName] = player;
+      });
+    });
+    return map;
+  }, [players]);
 
   // ===== Render =====
   return (
@@ -970,7 +984,7 @@ export default function MonopolyCashTracker() {
               <div className="no-scrollbar no-overscroll flex items-center gap-3 overflow-x-auto py-1 pl-1 pr-4">
                 {PROPERTIES.map((prop) => (
                   <div key={prop.name} className="shrink-0">
-                    <PropertyChip prop={prop} COLORS={COLORS} />
+                    <PropertyChip prop={prop} COLORS={COLORS} owner={propertyOwners[prop.name]} />
                   </div>
                 ))}
               </div>
@@ -1079,7 +1093,7 @@ export default function MonopolyCashTracker() {
               <h2 className="mb-3 text-lg font-semibold">Bank — Properties</h2>
               <div className="grid grid-cols-1 gap-3 max-h-[420px] overflow-auto pr-3">
                 {PROPERTIES.map((prop) => (
-                  <PropertyChip key={prop.name} prop={prop} COLORS={COLORS} />
+                  <PropertyChip key={prop.name} prop={prop} COLORS={COLORS} owner={propertyOwners[prop.name]} />
                 ))}
               </div>
             </div>
@@ -1203,16 +1217,29 @@ export default function MonopolyCashTracker() {
 }
 
 // ===== Chips =====
-function PropertyChip({ prop, COLORS }: { prop: any; COLORS: any }) {
+function PropertyChip({ prop, COLORS, owner }: { prop: any; COLORS: any; owner?: Player }) {
   const payload = JSON.stringify({ type: "property", name: prop.name, price: prop.price });
   const color = COLORS[prop.color];
+  const isOwned = !!owner;
+
+  const handleDragStart = (e: ReactDragEvent<HTMLDivElement>) => {
+    if (isOwned) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.setData("text/plain", payload);
+  };
+
   return (
     <div
-      draggable
-      onDragStart={(e) => e.dataTransfer.setData("text/plain", payload)}
-      className="cursor-grab select-none rounded-md bg-white px-2.5 py-1.5 text-sm ring-1 ring-slate-200 active:cursor-grabbing flex items-center justify-between gap-2.5"
+      draggable={!isOwned}
+      onDragStart={handleDragStart}
+      className={`select-none rounded-md bg-white px-2.5 py-1.5 text-sm ring-1 ring-slate-200 flex items-center justify-between gap-2.5 ${
+        isOwned ? "cursor-not-allowed opacity-40" : "cursor-grab active:cursor-grabbing"
+      }`}
       style={{ boxShadow: `inset 0 0 0 2px ${color.hex}30, 0 0 10px 1px ${color.hex}40` }}
-      title={`Drag ${prop.name} ($${prop.price})`}
+      title={isOwned ? `${prop.name} is owned by ${owner?.name}` : `Drag ${prop.name} ($${prop.price})`}
+      aria-disabled={isOwned}
     >
       <div className="min-w-0 flex-1">
         <div className="truncate text-slate-800">{prop.name}</div>
